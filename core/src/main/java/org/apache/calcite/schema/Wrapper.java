@@ -16,6 +16,10 @@
  */
 package org.apache.calcite.schema;
 
+import org.apiguardian.api.API;
+
+import java.util.Optional;
+
 /**
  * Mix-in interface that allows you to find sub-objects.
  */
@@ -23,6 +27,14 @@ public interface Wrapper {
   /** Finds an instance of an interface implemented by this object,
    * or returns null if this object does not support that interface. */
   <C> C unwrap(Class<C> aClass);
+
+  /** Finds an instance of an interface implemented by this object,
+   * or returns {@link Optional#empty()} if this object does not support
+   * that interface. */
+  @API(since = "1.27", status = API.Status.INTERNAL)
+  default <C extends Object> Optional<C> maybeUnwrap(Class<C> aClass) {
+    return Optional.ofNullable(unwrap(aClass));
+  }
 }
 
 // End Wrapper.java

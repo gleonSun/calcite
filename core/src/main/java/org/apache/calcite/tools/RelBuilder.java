@@ -97,7 +97,11 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import javax.annotation.Nullable;
+
 import static org.apache.calcite.util.Static.RESOURCE;
+
+import org.immutables.value.Value;
 
 /**
  * Builder for relational expressions.
@@ -115,6 +119,7 @@ import static org.apache.calcite.util.Static.RESOURCE;
  *
  * <p>It is not thread-safe.
  */
+@Value.Enclosing
 public class RelBuilder {
   private static final Function<RexNode, String> FN_TYPE =
       new Function<RexNode, String>() {
@@ -124,7 +129,7 @@ public class RelBuilder {
       };
 
   protected final RelOptCluster cluster;
-  protected final RelOptSchema relOptSchema;
+  protected final @Nullable RelOptSchema relOptSchema;
   private final RelFactories.FilterFactory filterFactory;
   private final RelFactories.ProjectFactory projectFactory;
   private final RelFactories.AggregateFactory aggregateFactory;
@@ -141,6 +146,8 @@ public class RelBuilder {
   private final RexSimplify simplifier;
   private final RexSimplify simplifierUnknownAsFalse;
 
+  private final Config config;
+
   protected RelBuilder(Context context, RelOptCluster cluster,
       RelOptSchema relOptSchema) {
     this.cluster = cluster;
@@ -148,6 +155,7 @@ public class RelBuilder {
     if (context == null) {
       context = Contexts.EMPTY_CONTEXT;
     }
+    this.config = getConfig(context);
     this.simplify = Hook.REL_BUILDER_SIMPLIFY.get(true);
     this.aggregateFactory =
         Util.first(context.unwrap(RelFactories.AggregateFactory.class),
@@ -190,6 +198,18 @@ public class RelBuilder {
         new RexSimplify(cluster.getRexBuilder(), predicates, false, executor);
     this.simplifierUnknownAsFalse =
         new RexSimplify(cluster.getRexBuilder(), predicates, true, executor);
+  }
+
+  /** Derives the Config to be used for this RelBuilder.
+   *
+   * <p>Overrides {@link RelBuilder.Config#simplify} if
+   * {@link Hook#REL_BUILDER_SIMPLIFY} is set.
+   */
+  private static Config getConfig(Context context) {
+    final Config config =
+        context.maybeUnwrap(Config.class).orElse(Config.DEFAULT);
+    boolean simplify = Hook.REL_BUILDER_SIMPLIFY.get(config.simplify());
+    return config.withSimplify(simplify);
   }
 
   /** Creates a RelBuilder. */
@@ -2090,6 +2110,70 @@ public class RelBuilder {
         return rexBuilder.makeInputRef(right, inputRef.getIndex() - leftCount);
       }
     }
+  }
+
+  /** Configuration of RelBuilder.
+   *
+   * <p>It is immutable, and all fields are public.
+   *
+   * <p>Start with the {@link #DEFAULT} instance,
+   * and call {@code withXxx} methods to set its properties. */
+  @Value.Immutable
+  public interface Config {
+    /** Default configuration. */
+    Config DEFAULT = ImmutableRelBuilder.Config.builder().build();
+
+    /** Controls whether to merge two {@link Project} operators when inlining
+     * expressions causes complexity to increase.
+     *
+     * <p>Usually merging projects is beneficial, but occasionally the
+     * result is more complex than the original projects. Consider:
+     *
+     * <pre>
+     * P: Project(a+b+c AS x, d+e+f AS y, g+h+i AS z)  # complexity 15
+     * Q: Project(x*y*z AS p, x-y-z AS q)              # complexity 10
+     * R: Project((a+b+c)*(d+e+f)*(g+h+i) AS s,
+     *            (a+b+c)-(d+e+f)-(g+h+i) AS t)        # complexity 34
+     * </pre>
+     *
+     * The complexity of an expression is the number of nodes (leaves and
+     * operators). For example, {@code a+b+c} has complexity 5 (3 field
+     * references and 2 calls):
+     *
+     * <pre>
+     *       +
+     *      /  \
+     *     +    c
+     *    / \
+     *   a   b
+     * </pre>
+     *
+     * <p>A negative value never allows merges.
+     *
+     * <p>A zero or positive value, {@code bloat}, allows a merge if complexity
+     * of the result is less than or equal to the sum of the complexity of the
+     * originals plus {@code bloat}.
+     *
+     * <p>The default value, 100, allows a moderate increase in complexity but
+     * prevents cases where complexity would run away into the millions and run
+     * out of memory. Moderate complexity is OK; the implementation, say via
+     * {@link org.apache.calcite.adapter.enumerable.EnumerableCalc}, will often
+     * gather common sub-expressions and compute them only once.
+     */
+    @Value.Default default int bloat() {
+      return 100;
+    }
+
+    /** Sets {@link #bloat}. */
+    Config withBloat(int bloat);
+
+    /** Whether to simplify expressions; default true. */
+    @Value.Default default boolean simplify() {
+      return true;
+    }
+
+    /** Sets {@link #simplify}. */
+    Config withSimplify(boolean simplify);
   }
 }
 

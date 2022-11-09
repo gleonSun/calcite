@@ -49,6 +49,7 @@ public class RexCall extends RexNode {
   public final SqlOperator op;
   public final ImmutableList<RexNode> operands;
   public final RelDataType type;
+  public final int nodeCount;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -59,6 +60,7 @@ public class RexCall extends RexNode {
     this.type = Preconditions.checkNotNull(type);
     this.op = Preconditions.checkNotNull(op);
     this.operands = ImmutableList.copyOf(operands);
+    this.nodeCount = RexUtil.nodeCount(1, this.operands);
     assert op.getKind() != null : op;
     assert op.validRexOperands(operands.size(), Litmus.THROW) : this;
   }
@@ -159,6 +161,10 @@ public class RexCall extends RexNode {
 
   public SqlOperator getOperator() {
     return op;
+  }
+
+  @Override public int nodeCount() {
+    return nodeCount;
   }
 
   /**

@@ -119,6 +119,10 @@ public class RexOver extends RexCall {
     return visitor.visitOver(this, arg);
   }
 
+  @Override public int nodeCount() {
+    return super.nodeCount() + window.nodeCount;
+  }
+
   /**
    * Returns whether an expression contains an OVER clause.
    */
